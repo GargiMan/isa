@@ -3,21 +3,21 @@
 
 LOGIN := xgerge01
 PROG_NAME := dns
+CC = gcc
 # -g for debug , -O2 for optimization (0 - disabled, 1 - less, 2 - more)
 CCFLAGS := -g -O0 -Wall -Wextra -std=c17 -pedantic
-SRC_FILES := $(wildcard *.c)
+SRC_FILES := main.c error.c dns.c
 
 .PHONY: $(PROG_NAME) test clean zip 
 
 $(PROG_NAME): $(SRC_FILES)
-	gcc $(CCFLAGS) $(SRC_FILES) -o $(PROG_NAME)
+	$(CC) $(CCFLAGS) $(SRC_FILES) -o $@
 
 test:
-	./$(PROG_NAME)
+	./test.sh
 
 clean:
-	rm -rf $(PROG_NAME)
-	rm -rf $(LOGIN).zip
+	rm -rf $(PROG_NAME) $(LOGIN).zip
 
 zip: clean
 	zip -r $(LOGIN).zip *.h *.c *.md Makefile LICENSE
