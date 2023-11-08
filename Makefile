@@ -3,10 +3,10 @@
 
 LOGIN := xgerge01
 PROG_NAME := dns
-CC = gcc
+CC = g++
 # -g for debug , -O2 for optimization (0 - disabled, 1 - less, 2 - more)
-CCFLAGS := -g -O0 -Wall -Wextra -std=c17 -pedantic
-SRC_FILES := main.c error.c dns.c
+CCFLAGS := -g -O0 -Wall -Wextra -std=c++17 -pedantic
+SRC_FILES := main.cpp error.cpp dns.cpp
 
 .PHONY: $(PROG_NAME) test clean zip 
 
