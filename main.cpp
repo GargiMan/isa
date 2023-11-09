@@ -16,7 +16,7 @@
 // variables for dns resolver
 std::string address;
 std::string server;
-std::string request_type = "A";
+RR_TYPE type = RR_TYPE::A;
 bool recursion = false;
 bool inverse = false;
 int port = 53;
@@ -71,7 +71,7 @@ void parse_args(int argc, char *argv[])
         }
         else if (std::string(argv[i]) == "-6")
         {
-            request_type = "AAAA";
+            type = RR_TYPE::AAAA;
         }
         else if (std::string(argv[i]) == "--help")
         {
@@ -103,7 +103,7 @@ void dns_resolver()
 {
     dns_init(server, port);
 
-    DNSPacket packet = DNSPacket(DNSHeader(recursion, inverse), DNSQuestion(address, request_type));
+    DNSPacket packet = DNSPacket(DNSHeader(recursion, inverse), DNSQuestion(address, type));
 
     packet = dns_send_packet(packet);
 

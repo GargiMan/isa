@@ -58,7 +58,6 @@ void dns_close() {
     close(socket_fd);
 }
 
-
 DNSPacket dns_send_packet(const DNSPacket& packet) {
 
     socklen_t address_len = sizeof(address);
@@ -68,7 +67,8 @@ DNSPacket dns_send_packet(const DNSPacket& packet) {
 
     // Send request to server
     int send_fails = 0;
-    while (sendto(socket_fd, packet.getBytes().data(), packet.getBytes().size(), 0, (struct sockaddr *)&address, address_len) == -1)
+    std::vector<uint8_t> request_packet = packet.getBytes();
+    while (sendto(socket_fd, request_packet.data(), request_packet.size(), 0, (struct sockaddr *)&address, address_len) == -1)
     {
         if (++send_fails >= MAX_TRANSFER_FAILS)
         {
@@ -80,7 +80,7 @@ DNSPacket dns_send_packet(const DNSPacket& packet) {
 
     // Receive response from server
     int recv_fails = 0;
-    while (false || recvfrom(socket_fd, response_packet, BUFFER_SIZE, 0, (struct sockaddr *)&address, &address_len) == -1)
+    while (false && recvfrom(socket_fd, response_packet, BUFFER_SIZE, 0, (struct sockaddr *)&address, &address_len) == -1)
     {
         if (++recv_fails >= MAX_TRANSFER_FAILS)
         {
