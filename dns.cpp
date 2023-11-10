@@ -8,9 +8,6 @@
 
 #include "dns.h"
 
-//temp
-const int BUFFER_SIZE = 65468;
-
 int socket_fd;
 struct sockaddr_in address;
 
@@ -61,14 +58,11 @@ void dns_close() {
 DNSPacket dns_send_packet(const DNSPacket& packet) {
 
     socklen_t address_len = sizeof(address);
-
-    //data packet max size 4 + 65464
     uint8_t response_packet[BUFFER_SIZE] = "";
 
     // Send request to server
     int send_fails = 0;
-    std::vector<uint8_t> request_packet = packet.getBytes();
-    while (sendto(socket_fd, request_packet.data(), request_packet.size(), 0, (struct sockaddr *)&address, address_len) == -1)
+    while (sendto(socket_fd, packet.getBytes(), packet.getSize(), 0, (struct sockaddr *)&address, address_len) == -1)
     {
         if (++send_fails >= MAX_TRANSFER_FAILS)
         {
@@ -80,7 +74,8 @@ DNSPacket dns_send_packet(const DNSPacket& packet) {
 
     // Receive response from server
     int recv_fails = 0;
-    while (false && recvfrom(socket_fd, response_packet, BUFFER_SIZE, 0, (struct sockaddr *)&address, &address_len) == -1)
+    ssize_t response_size = 0;
+    while ((response_size = recvfrom(socket_fd, response_packet, BUFFER_SIZE, 0, (struct sockaddr *)&address, &address_len)) == -1)
     {
         if (++recv_fails >= MAX_TRANSFER_FAILS)
         {
@@ -90,9 +85,19 @@ DNSPacket dns_send_packet(const DNSPacket& packet) {
         warning_print("Receive failed");
     }
 
-    return packet;
+    DNSPacket response = DNSPacket(response_packet, response_size);
+
+    return response;
 }
 
 void dns_print_packet(const DNSPacket& packet) {
-    std::cout << packet.getBytes().data() << std::endl;
+    std::cout << "Authoritative: " << (packet.getHeader().getFlags() & DNSHeader::FLAGS::AA ? "yes" : "no") << std::endl;
+    std::cout << "Recursion available: " << (packet.getHeader().getFlags() & DNSHeader::FLAGS::RA ? "yes" : "no") << std::endl;
+    std::cout << "Recursion desired: " << (packet.getHeader().getFlags() & DNSHeader::FLAGS::RD ? "yes" : "no") << std::endl;
+    std::cout << "Truncated: " << (packet.getHeader().getFlags() & DNSHeader::FLAGS::TC ? "yes" : "no") << std::endl;
+    std::cout << "Question count: " << packet.getHeader().getQdcount() << std::endl;
+    std::cout << packet.getQuestion().getAddress() << " " << packet.getQuestion().getQtype() << " " << packet.getQuestion().getQclass() << std::endl;
+    std::cout << "Answer count: " << packet.getHeader().getAncount() << std::endl;
+    std::cout << "Authority count: " << packet.getHeader().getNscount() << std::endl;
+    std::cout << "Additional count: " << packet.getHeader().getArcount() << std::endl;
 }

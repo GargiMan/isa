@@ -26,6 +26,8 @@
 #include "error.h"
 
 const int MAX_TRANSFER_FAILS = 10;
+//data packet max size 4 + 65464
+const int BUFFER_SIZE = 65468;
 
 enum RR_TYPE {
     A = 0x0001,
@@ -49,6 +51,21 @@ public:
         ancount = 0;
         nscount = 0;
         arcount = 0;
+    }
+
+    DNSHeader(const uint8_t* buffer) {
+        memcpy(&id, buffer, sizeof(uint16_t));
+        memcpy(&flags, buffer + sizeof(uint16_t), sizeof(uint16_t));
+        memcpy(&qdcount, buffer + 2 * sizeof(uint16_t), sizeof(uint16_t));
+        memcpy(&ancount, buffer + 3 * sizeof(uint16_t), sizeof(uint16_t));
+        memcpy(&nscount, buffer + 4 * sizeof(uint16_t), sizeof(uint16_t));
+        memcpy(&arcount, buffer + 5 * sizeof(uint16_t), sizeof(uint16_t));
+        id = ntohs(id);
+        flags = ntohs(flags);
+        qdcount = ntohs(qdcount);
+        ancount = ntohs(ancount);
+        nscount = ntohs(nscount);
+        arcount = ntohs(arcount);
     }
 
     uint16_t getId() const {
@@ -75,6 +92,16 @@ public:
         return arcount;
     }
 
+    enum FLAGS {
+        QR_RESPONSE = 0x8000,
+        OP_STATUS = 0x1000,
+        OP_INVERSE = 0x0800,
+        AA = 0x0400,
+        TC = 0x0200,
+        RD = 0x0100,
+        RA = 0x0080,
+    };
+
 private:
     uint16_t id;
     uint16_t flags;
@@ -82,16 +109,6 @@ private:
     uint16_t ancount;
     uint16_t nscount;
     uint16_t arcount;
-
-    enum FLAGS {
-        QR_RESPONSE = 0x1000,
-        OP_STATUS = 0x8000,
-        OP_INVERSE = 0x0100,
-        AA = 0x0200,
-        TC = 0x0400,
-        RD = 0x0800,
-        RA = 0x0010,
-    };
 };
 
 class DNSQuestion {
@@ -117,7 +134,26 @@ public:
 	    }
         this->qtype = htons(type);
         this->qclass = htons(0x0001);
-    };
+    }
+
+    DNSQuestion(const std::string& address, uint16_t type)
+    {
+        int len = 0;
+        this->address = "";
+        for(size_t i = 0; i < address.length(); ++i) {
+            if (len == 0) {
+                len = address[i];
+                if (i != 0) {
+                    this->address += '.';
+                }
+            } else {
+                this->address += address[i];
+                len--;
+            }
+        }
+        this->qtype = type;
+        this->qclass = 0x0001;
+    }
 
     const char* getAddress() const {
         return this->address.c_str();
@@ -140,42 +176,52 @@ private:
 class DNSPacket {
 public:
     DNSPacket(const DNSHeader& header, const DNSQuestion& question) 
-    : header(header), question(question) {};
+    : header(header), question(question) {
+        memcpy(buffer, &header, sizeof(DNSHeader));
+        size_t offset = sizeof(DNSHeader);
+        memcpy(buffer + offset, question.getAddress(), strlen(question.getAddress()) + 1);
+        offset += strlen(question.getAddress()) + 1;
+        uint16_t qtype = question.getQtype();
+        memcpy(buffer + offset, &qtype, sizeof(uint16_t));
+        offset += sizeof(uint16_t);
+        uint16_t qclass = question.getQclass();
+        memcpy(buffer + offset, &qclass, sizeof(uint16_t));
+        offset += sizeof(uint16_t);
+        bufferSize = offset;
+    }
 
-    std::vector<uint8_t> getBytes() const 
+    DNSPacket(const uint8_t* buffer, size_t size) 
+    : header(buffer), question(reinterpret_cast<const char*>(buffer + sizeof(DNSHeader)), ntohs(*reinterpret_cast<const uint16_t*>(buffer + sizeof(DNSHeader) + strlen(reinterpret_cast<const char*>(buffer + sizeof(DNSHeader))) + 1))) {
+        memcpy(this->buffer, buffer, size);
+        bufferSize = size;
+    }
+
+    const uint8_t* getBytes() const 
     {
-        std::vector<uint8_t> bytes;
+        return reinterpret_cast<const uint8_t*>(buffer);
+    }
 
-        // Serialize the DNSHeader
-        bytes.push_back(static_cast<uint8_t>(header.getId() & 0xFF));               // Least significant byte
-        bytes.push_back(static_cast<uint8_t>((header.getId() >> 8) & 0xFF));        // Most significant byte
-        bytes.push_back(static_cast<uint8_t>(header.getFlags() & 0xFF));            // Least significant byte
-        bytes.push_back(static_cast<uint8_t>((header.getFlags() >> 8) & 0xFF));     // Most significant byte
-        bytes.push_back(static_cast<uint8_t>(header.getQdcount() & 0xFF));          // Least significant byte
-        bytes.push_back(static_cast<uint8_t>((header.getQdcount() >> 8) & 0xFF));   // Most significant byte
-        bytes.push_back(static_cast<uint8_t>(header.getAncount() & 0xFF));          // Least significant byte
-        bytes.push_back(static_cast<uint8_t>((header.getAncount() >> 8) & 0xFF));   // Most significant byte
-        bytes.push_back(static_cast<uint8_t>(header.getNscount() & 0xFF));          // Least significant byte
-        bytes.push_back(static_cast<uint8_t>((header.getNscount() >> 8) & 0xFF));   // Most significant byte
-        bytes.push_back(static_cast<uint8_t>(header.getArcount() & 0xFF));          // Least significant byte
-        bytes.push_back(static_cast<uint8_t>((header.getArcount() >> 8) & 0xFF));   // Most significant byte
+    size_t getSize() const 
+    {
+        return bufferSize;
+    }
 
-        // Serialize the DNSQuestion
-        const char* str = question.getAddress();
-        for (size_t i = 0; str[i] != '\0'; ++i)
-        bytes.push_back(static_cast<uint8_t>(str[i]));
-        bytes.push_back('\0'); 
-        bytes.push_back(static_cast<uint8_t>(question.getQtype() & 0xFF));          // Least significant byte
-        bytes.push_back(static_cast<uint8_t>((question.getQtype() >> 8) & 0xFF));   // Most significant byte
-        bytes.push_back(static_cast<uint8_t>(question.getQclass() & 0xFF));         // Least significant byte
-        bytes.push_back(static_cast<uint8_t>((question.getQclass() >> 8) & 0xFF));  // Most significant byte
+    const DNSHeader& getHeader() const 
+    {
+        return header;
+    }
 
-        return bytes;
+    const DNSQuestion& getQuestion() const 
+    {
+        return question;
     }
 
 private:
     DNSHeader header;
     DNSQuestion question;
+
+    size_t bufferSize = 0;
+    uint8_t buffer[BUFFER_SIZE];
 };
 
 void dns_init(const std::string& host, int port);
