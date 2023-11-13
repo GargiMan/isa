@@ -8,7 +8,9 @@ CC = g++
 CCFLAGS := -g -O0 -Wall -Wextra -std=c++2a -pedantic
 SRC_FILES := main.cpp error.cpp dns.cpp
 
-.PHONY: $(PROG_NAME) test clean zip 
+.PHONY: all $(PROG_NAME) test clean zip
+
+all: $(PROG_NAME)
 
 $(PROG_NAME): $(SRC_FILES)
 	$(CC) $(CCFLAGS) $(SRC_FILES) -o $@

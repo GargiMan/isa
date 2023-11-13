@@ -10,32 +10,35 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <regex>
 #include "error.h"
 #include "dns.h"
 
+using namespace std;
+
 // variables for dns resolver
-std::string address;
-std::string server;
+vector<string> addresses;
+string server;
 RR_TYPE type = RR_TYPE::A;
 bool recursion = false;
 bool inverse = false;
-int port = 53;
+long port = 53;
 
 /**
  * @brief Prints help message
  */
 void print_help()
 {
-    std::cout << "Usage: dns [-r] [-x] [-6] -s SERVER [-p PORT] ADDRESS" << std::endl;
-    std::cout << "       dns --help" << std::endl;
-    std::cout << "       Send DNS request with ADDRESS to SERVER and print response" << std::endl;
-    std::cout << "Options:" << std::endl;
-    std::cout << "  -r          required recursion (Recursion Desired = 1), otherwise without recursion" << std::endl;
-    std::cout << "  -x          inverse request, instead of straight" << std::endl;
-    std::cout << "  -6          request type AAAA instead of default type A" << std::endl;
-    std::cout << "  -s SERVER   server host name or IP address, where to send request" << std::endl;
-    std::cout << "  -p PORT     server port number, default 53" << std::endl;
-    std::cout << "  --help      print this help and exit program" << std::endl;
+    cout << "Usage: dns [-r] [-x] [-6] -s SERVER [-p PORT] ADDRESS [ADDRESS...]" << endl;
+    cout << "       dns --help" << endl;
+    cout << "       Send DNS request with all ADDRESS values to SERVER and print response" << endl;
+    cout << "Options:" << endl;
+    cout << "  -r          required recursion (Recursion Desired = 1), otherwise without recursion" << endl;
+    cout << "  -x          inverse request, instead of straight" << endl;
+    cout << "  -6          request type AAAA instead of default type A" << endl;
+    cout << "  -s SERVER   server host name or IP address, where to send request" << endl;
+    cout << "  -p PORT     server port number, default 53" << endl;
+    cout << "  --help      print this help and exit program" << endl;
 }
 
 /**
@@ -47,50 +50,60 @@ void parse_args(int argc, char *argv[])
 {
     for (int i = 1; i < argc; i++)
     {
-        if (std::string(argv[i]) == "-s" && i < argc - 1)
+        if (string(argv[i]) == "-s" && i < argc - 1)
         {
             server = argv[++i];
         }
-        else if (std::string(argv[i]) == "-p" && i < argc - 1)
+        else if (string(argv[i]) == "-p" && i < argc - 1)
         {
             char *endptr;
-            port = std::strtol(argv[++i], &endptr, 10);
+            port = strtol(argv[++i], &endptr, 10);
 
-            if (*endptr != '\0' || port < 1 || port > 65535)
+            if (*endptr != '\0' || port < 0 || port > 65535)
             {
                 error_exit(ErrorCodes::ArgumentError, "Invalid port, port must be integer in range (0 - 65535)");
             }
         }
-        else if (std::string(argv[i]) == "-r")
+        else if (string(argv[i]) == "-r")
         {
             recursion = true;
         }
-        else if (std::string(argv[i]) == "-x")
+        else if (string(argv[i]) == "-x")
         {
+            if (type == RR_TYPE::AAAA)
+            {
+                error_exit(ErrorCodes::ArgumentError, "Option '-x' cannot be used with '-6'");
+            }
             inverse = true;
         }
-        else if (std::string(argv[i]) == "-6")
+        else if (string(argv[i]) == "-6")
         {
+            if (inverse)
+            {
+                error_exit(ErrorCodes::ArgumentError, "Option '-6' cannot be used with '-x'");
+            }
             type = RR_TYPE::AAAA;
         }
-        else if (std::string(argv[i]) == "--help")
+        else if (string(argv[i]) == "--help")
         {
             print_help();
-            std::exit(0);
+            exit(0);
         }
         else
         {
-            if (address.empty())
-            {
-                address = argv[i];
-                continue;
+            regex ipv4_regex("^\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b$");
+            regex ipv6_regex("^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$");
+            regex hostname_regex("^([a-zA-Z0-9_-]+\\.)*[a-zA-Z0-9_-]+\\b$");
+
+            if (!regex_match(argv[i], ipv4_regex) && !regex_match(argv[i], ipv6_regex) && !regex_match(argv[i], hostname_regex)) {
+                error_exit(ErrorCodes::ArgumentError, "Unknown argument '" + string(argv[i]) + "', use '--help' to show usage");
             }
 
-            error_exit(ErrorCodes::ArgumentError, "Unknown argument '" + std::string(argv[i]) + "', use '--help' to show usage");
+            addresses.emplace_back(argv[i]);
         }
     }
 
-    if (address.empty() || server.empty())
+    if (addresses.empty() || server.empty())
     {
         error_exit(ErrorCodes::ArgumentError, "Option '-s SERVER' and ADDRESS are required arguments");
     }
@@ -101,9 +114,15 @@ void parse_args(int argc, char *argv[])
  */
 void dns_resolver()
 {
-    dns_init(server, port);
+    dns_init(server, static_cast<uint16_t>(port));
 
-    DNSPacket packet = DNSPacket(DNSHeader(recursion, inverse), DNSQuestion(address, type));
+    vector<DNSQuestion> questions;
+    questions.reserve(addresses.size());
+    for (const auto &address : addresses) {
+        questions.emplace_back(address, type);
+    }
+
+    DNSPacket packet = DNSPacket(DNSHeader(recursion, inverse, questions.size()), questions);
 
     packet = dns_send_packet(packet);
 
