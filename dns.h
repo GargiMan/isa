@@ -37,9 +37,14 @@ inline bool is_little_endian = (*reinterpret_cast<uint8_t*>(&test_value)) == 0x0
 inline uint16_t htonse(const uint16_t value) {
     return is_little_endian ? htons(value) : value;
 }
-
 inline uint16_t ntohse(const uint16_t value) {
     return is_little_endian ? ntohs(value) : value;
+}
+inline uint32_t htonle(const uint32_t value) {
+    return is_little_endian ? htonl(value) : value;
+}
+inline uint32_t ntohle(const uint32_t value) {
+    return is_little_endian ? ntohl(value) : value;
 }
 
 inline string getNameToDot(const uint8_t* buffer) {
@@ -99,6 +104,7 @@ public:
     }
 
     constexpr bool operator==(const RR_TYPE a) const { return type == a.type; }
+    constexpr bool operator!=(const RR_TYPE a) const { return type != a.type; }
 
     uint16_t value() const {
         return type;
@@ -299,23 +305,35 @@ private:
 class DNSRecord {
 public:
     DNSRecord(const uint8_t* buffer, const uint8_t* packet) {
+        size_t offset = 0;
+
         uint16_t name = 0;
         memcpy(&name, buffer, sizeof(uint16_t));
-        this->name = getNameToDot(packet + (ntohse(name) & 0x00ff));
+        if (ntohse(name) == 0x0000) {
+            offset += sizeof(uint8_t);
+            this->name = "@";   //root
+        } else {
+            offset += sizeof(uint16_t);
+            this->name = getNameToDot(packet + (ntohse(name) & 0x00ff));
+        }
 
-        memcpy(&type, buffer + sizeof(uint16_t), sizeof(uint16_t));
+        memcpy(&type, buffer + offset, sizeof(uint16_t));
+        offset += sizeof(uint16_t);
         this->type = ntohse(type);
 
-        memcpy(&class_, buffer + 2 * sizeof(uint16_t), sizeof(uint16_t));
+        memcpy(&class_, buffer + offset, sizeof(uint16_t));
+        offset += sizeof(uint16_t);
         this->class_ = ntohse(class_);
 
-        memcpy(&ttl, buffer + 3 * sizeof(uint16_t), sizeof(uint32_t));
-        this->ttl = ntohl(ttl);
+        memcpy(&ttl, buffer + offset, sizeof(uint32_t));
+        offset += sizeof(uint32_t);
+        this->ttl = ntohle(ttl);
 
-        memcpy(&rdlength, buffer + 3 * sizeof(uint16_t) + sizeof(uint32_t), sizeof(uint16_t));
+        memcpy(&rdlength, buffer + offset, sizeof(uint16_t));
+        offset += sizeof(uint16_t);
         this->rdlength = ntohse(rdlength);
 
-        this->rdata = string(reinterpret_cast<const char*>(buffer + 3 * sizeof(uint16_t) + sizeof(uint32_t) + sizeof(uint16_t)), rdlength);
+        this->rdata = string(reinterpret_cast<const char*>(buffer + offset), rdlength);
     }
 
     string getName() const {
@@ -345,6 +363,7 @@ public:
 
     string getRdata() const {
         string result;
+        size_t offset;
         switch (type) {
             case RR_TYPE::A:
                 for (int i = 0; i < rdlength; i++) {
@@ -362,6 +381,35 @@ public:
                         result += ":";
                     }
                 }
+                break;
+            case RR_TYPE::SOA:
+                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()));
+                result += "\t";
+                offset = strlen(rdata.c_str());
+                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()) + offset + 1);
+                result += "\t";
+                offset += strlen(rdata.c_str() + offset + 1) + 2;
+                result += to_string(ntohle(*reinterpret_cast<const uint32_t*>(rdata.c_str() + offset)));
+                result += "\t";
+                offset += 4;
+                result += to_string(ntohle(*reinterpret_cast<const uint32_t*>(rdata.c_str() + offset)));
+                result += "\t";
+                offset += 4;
+                result += to_string(ntohle(*reinterpret_cast<const uint32_t*>(rdata.c_str() + offset)));
+                result += "\t";
+                offset += 4;
+                result += to_string(ntohle(*reinterpret_cast<const uint32_t*>(rdata.c_str() + offset)));
+                result += "\t";
+                offset += 4;
+                result += to_string(ntohle(*reinterpret_cast<const uint32_t*>(rdata.c_str() + offset)));
+                break;
+            case RR_TYPE::PTR: case RR_TYPE::NS: case RR_TYPE::CNAME:
+                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()));
+                break;
+            case RR_TYPE::MX:
+                result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str())));
+                result += "\t";
+                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()) + 2);
                 break;
             default:
                 return rdata;

@@ -5,7 +5,7 @@ LOGIN := xgerge01
 PROG_NAME := dns
 CC = g++
 # -g for debug , -O2 for optimization (0 - disabled, 1 - less, 2 - more)
-CCFLAGS := -g -O0 -Wall -Wextra -std=c++2a -pedantic
+CCFLAGS := -g -O0 -Wall -Wextra -std=c++17 -pedantic
 SRC_FILES := main.cpp error.cpp dns.cpp
 
 .PHONY: all $(PROG_NAME) test clean zip

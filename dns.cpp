@@ -93,18 +93,18 @@ void dns_print_packet(const DNSPacket& packet) {
     std::cout << "Truncated: " << (packet.getHeader().getFlags() & DNSHeader::FLAGS::TC ? "Yes" : "No") << std::endl;
     std::cout << "Question section (" << packet.getHeader().getQdcount() << ")" << std::endl;
     for (const auto& record : packet.getQuestions()) {
-        std::cout << "\t" << record.getNameDot() << " " << record.getTypeString() << " " << record.getClassString() << std::endl;
+        std::cout << "\t" << record.getNameDot() << "\t" << record.getTypeString() << "\t" << record.getClassString() << std::endl;
     }
     std::cout << "Answer section (" << packet.getHeader().getAncount() << ")" << std::endl;
     for (const auto& record : packet.getAnswers()) {
-        std::cout << "\t" << record.getName() << " " << record.getType() << " " << record.getClass() << " " << record.getTtl() << " " << record.getRdata() << std::endl;
+        std::cout << "\t" << record.getName() << "\t" << record.getType() << "\t" << record.getClass() << "\t" << record.getTtl() << "\t" << record.getRdata() << std::endl;
     }
     std::cout << "Authority section (" << packet.getHeader().getNscount() << ")" << std::endl;
     for (const auto& record : packet.getAuthorities()) {
-        std::cout << "\t" << record.getName() << " " << record.getType() << " " << record.getClass() << " " << record.getTtl() << " " << record.getRdata() << std::endl;
+        std::cout << "\t" << record.getName() << "\t" << record.getType() << "\t" << record.getClass() << "\t" << record.getTtl() << "\t" << record.getRdata() << std::endl;
     }
     std::cout << "Additional section (" << packet.getHeader().getArcount() << ")" << std::endl;
     for (const auto& record : packet.getAdditionals()) {
-        std::cout << "\t" << record.getName() << " " << record.getType() << " " << record.getClass() << " " << record.getTtl() << " " << record.getRdata() << std::endl;
+        std::cout << "\t" << record.getName() << "\t" << record.getType() << "\t" << record.getClass() << "\t" << record.getTtl() << "\t" << record.getRdata() << std::endl;
     }
 }
