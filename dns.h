@@ -411,6 +411,18 @@ public:
                 result += "\t";
                 result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()) + 2);
                 break;
+            case RR_TYPE::SRV:
+                result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str())));
+                result += "\t";
+                offset = 2;
+                result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str() + offset)));
+                result += "\t";
+                offset += 2;
+                result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str() + offset)));
+                result += "\t";
+                offset += 2;
+                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()) + offset);
+                break;
             default:
                 return rdata;
         }
