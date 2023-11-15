@@ -10,7 +10,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
-#include <regex>
+
 #include "error.h"
 #include "dns.h"
 
@@ -21,7 +21,6 @@ vector<string> addresses;
 string server;
 RR_TYPE type = RR_TYPE::A;
 bool recursion = false;
-bool inverse = false;
 long port = 53;
 
 /**
@@ -46,7 +45,7 @@ void print_help()
  * @param argc argument count
  * @param argv argument values
  */
-void parse_args(int argc, char *argv[])
+void parse_args(const int argc, const char *argv[])
 {
     for (int i = 1; i < argc; i++)
     {
@@ -74,11 +73,11 @@ void parse_args(int argc, char *argv[])
             {
                 error_exit(ErrorCodes::ArgumentError, "Option '-x' cannot be used with '-6'");
             }
-            inverse = true;
+            type = RR_TYPE::PTR;
         }
         else if (string(argv[i]) == "-6")
         {
-            if (inverse)
+            if (type == RR_TYPE::PTR)
             {
                 error_exit(ErrorCodes::ArgumentError, "Option '-6' cannot be used with '-x'");
             }
@@ -91,12 +90,9 @@ void parse_args(int argc, char *argv[])
         }
         else
         {
-            regex ipv4_regex("^\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b$");
-            regex ipv6_regex("^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$");
-            regex hostname_regex("^([a-zA-Z0-9_-]+\\.)*[a-zA-Z0-9_-]+\\b$");
-
-            if (!regex_match(argv[i], ipv4_regex) && !regex_match(argv[i], ipv6_regex) && !regex_match(argv[i], hostname_regex)) {
-                error_exit(ErrorCodes::ArgumentError, "Unknown argument '" + string(argv[i]) + "', use '--help' to show usage");
+            if (argv[i][0] == '-')
+            {
+                error_exit(ErrorCodes::ArgumentError, "Unknown option '" + string(argv[i]) + "'");
             }
 
             addresses.emplace_back(argv[i]);
@@ -105,7 +101,7 @@ void parse_args(int argc, char *argv[])
 
     if (addresses.empty() || server.empty())
     {
-        error_exit(ErrorCodes::ArgumentError, "Option '-s SERVER' and ADDRESS are required arguments");
+        error_exit(ErrorCodes::ArgumentError, "Option '-s SERVER' and 'ADDRESS' are required arguments");
     }
 }
 
@@ -116,22 +112,18 @@ void dns_resolver()
 {
     dns_init(server, static_cast<uint16_t>(port));
 
-    vector<DNSQuestion> questions;
-    questions.reserve(addresses.size());
-    for (const auto &address : addresses) {
-        questions.emplace_back(address, type);
+    for (size_t i = 0; i < addresses.size(); i++) {
+        DNSPacket packet = DNSPacket(DNSHeader(recursion), DNSQuestion(addresses[i], type));
+
+        packet = dns_send(packet);
+
+        dns_print(packet);
     }
-
-    DNSPacket packet = DNSPacket(DNSHeader(recursion, inverse, questions.size()), questions);
-
-    packet = dns_send_packet(packet);
-
-    dns_print_packet(packet);
 
     dns_close();
 }
 
-int main(int argc, char *argv[])
+int main(const int argc, const char *argv[])
 {
     parse_args(argc, argv);
 

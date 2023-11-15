@@ -14,17 +14,34 @@
 #include <string>
 #include <cstring>
 #include <cstdint>
-#include <cstdbool>
 #include <csignal>
-#include <bit>
 #include <memory>
+#include <sstream>
+
+#include "error.h"
+
+#if defined(_WIN32) || defined(_WIN64) // windows
+
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
+#pragma comment(lib, "ws2_32.lib")
+
+#define close(a) (void)closesocket(a)
+#define socklen_t int
+
+#include <io.h>
+
+#else // unix
+
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#include "error.h"
+
+#endif // _WIN32 || _WIN64
 
 using namespace std;
 
@@ -49,20 +66,40 @@ inline uint32_t ntohle(const uint32_t value) {
 
 inline string getNameToDot(const uint8_t* buffer) {
     string name;
+
     while (buffer[0] != 0) {
         name += string(reinterpret_cast<const char*>(buffer + 1), buffer[0]);
         buffer += buffer[0] + 1;
         if (buffer[0] != 0) {
             name += ".";
+            //pointer to another name
+            if (buffer[0] == 0xc0) {
+                name += static_cast<char>(buffer[0]);
+                name += static_cast<char>(buffer[1]);
+                break;
+            }
         }
+    }
+
+    return name;
+}
+
+inline string getNameToDot(const uint8_t* buffer, const uint8_t* packet) {
+    string name = getNameToDot(buffer);
+    //TODO while or if ???
+    while (name[name.length() - 2] == static_cast<char>(0xc0)) {
+        const uint8_t name_offset = name[name.length() - 1];
+        name = name.substr(0, name.length() - 2);
+        name += getNameToDot(packet + name_offset);
     }
     return name;
 }
 
-inline string getNameToDns(string address) {
-    int pos = 0;
+inline string getNameToDns(const string& address) {
+    size_t pos = 0;
     char len = 0;
     string name = "\1";
+
     for(size_t i = 0; i < address.length(); ++i) {
         if(address[i] == '.') {
             name[pos] = len;
@@ -77,6 +114,23 @@ inline string getNameToDns(string address) {
             name[pos] = len;
         }
     }
+    if (name[name.length() - 1] != '\0') {
+        name += '\0';
+    }
+
+    return name;
+}
+
+inline string getInverseName(const string& address) {
+    string name;
+    const bool isIPv6 = address.find(':') != string::npos;
+
+    istringstream iss(address);
+    string group;
+    while (getline(iss, group, isIPv6 ? ':' : '.')) {
+        name.insert(0, group + ".");
+    }
+    name += isIPv6 ? "ip6.arpa" : "in-addr.arpa";
 
     return name;
 }
@@ -149,10 +203,10 @@ class DNSHeader {
 public:
     DNSHeader() = default;
 
-    DNSHeader(const bool recursion, const bool inverse, const uint16_t qdcount) {
+    DNSHeader(const bool recursion) {
         this->id = static_cast<uint16_t>(getpid());
-        this->flags = (recursion ? RD : 0) | (inverse ? OP_INVERSE : 0);
-        this->qdcount = qdcount;
+        this->flags = recursion ? RD : 0;
+        this->qdcount = 1;
     }
 
     DNSHeader(const uint8_t* buffer) {
@@ -253,22 +307,18 @@ class DNSQuestion {
 public:
     DNSQuestion() = default;
 
-    DNSQuestion(const string& address, const RR_TYPE type)
-    {
-        this->name = address;
-        this->type = type.value();
-        this->class_ = 0x0001;
-    }
+    DNSQuestion(const string& address, const RR_TYPE type) :
+        name(type == RR_TYPE::Type::PTR ? getInverseName(address) : address),
+        type(type.value()),
+        class_(0x0001) {}
 
-    DNSQuestion(const uint8_t* buffer)
-    {
-        this->name = getNameToDot(buffer);
-        this->type = ntohse(*reinterpret_cast<const uint16_t*>(buffer + this->name.length() + 2));
-        this->class_ = ntohse(*reinterpret_cast<const uint16_t*>(buffer + this->name.length() + 4));
-    }
+    DNSQuestion(const uint8_t* buffer) :
+        name(getNameToDot(buffer)),
+        type(ntohse(*reinterpret_cast<const uint16_t*>(buffer + name.length() + 2))),
+        class_(ntohse(*reinterpret_cast<const uint16_t*>(buffer + name.length() + 4))) {}
 
     string getNameDot() const {
-        return this->name;
+        return this->name[this->name.length() - 1] == '.' ? this->name : this->name + ".";
     }
 
     string getNameDns() const {
@@ -304,40 +354,56 @@ private:
 
 class DNSRecord {
 public:
+    DNSRecord() = default;
+
     DNSRecord(const uint8_t* buffer, const uint8_t* packet) {
+        this->packet = packet;
         size_t offset = 0;
 
-        uint16_t name = 0;
-        memcpy(&name, buffer, sizeof(uint16_t));
-        if (ntohse(name) == 0x0000) {
-            offset += sizeof(uint8_t);
+        if (buffer[0] == 0x00) {
             this->name = "@";   //root
-        } else {
+            offset += sizeof(uint8_t);
+        } else if (buffer[0] == 0xc0) {
+            this->name = getNameToDot(packet + buffer[1], this->packet);
             offset += sizeof(uint16_t);
-            this->name = getNameToDot(packet + (ntohse(name) & 0x00ff));
+        } else {
+            this->name = getNameToDot(buffer);
+            offset += this->name.length() + 2;
         }
 
         memcpy(&type, buffer + offset, sizeof(uint16_t));
-        offset += sizeof(uint16_t);
         this->type = ntohse(type);
+        offset += sizeof(uint16_t);
 
         memcpy(&class_, buffer + offset, sizeof(uint16_t));
-        offset += sizeof(uint16_t);
         this->class_ = ntohse(class_);
+        offset += sizeof(uint16_t);
 
         memcpy(&ttl, buffer + offset, sizeof(uint32_t));
-        offset += sizeof(uint32_t);
         this->ttl = ntohle(ttl);
+        offset += sizeof(uint32_t);
 
         memcpy(&rdlength, buffer + offset, sizeof(uint16_t));
-        offset += sizeof(uint16_t);
         this->rdlength = ntohse(rdlength);
+        offset += sizeof(uint16_t);
 
-        this->rdata = string(reinterpret_cast<const char*>(buffer + offset), rdlength);
+        if (buffer[offset + rdlength - 2] == 0xc0) {
+            this->rdata = string(reinterpret_cast<const char*>(buffer + offset), rdlength - 2);
+            this->rdata += string(reinterpret_cast<const char*>(packet + buffer[offset + rdlength - 1]));
+        } else {
+            this->rdata = string(reinterpret_cast<const char*>(buffer + offset), rdlength);
+        }
+        offset += rdlength;
+
+        this->recordLength = offset;
+    }
+
+    size_t getRecordLength() const {
+        return recordLength;
     }
 
     string getName() const {
-        return name;
+        return name + ".";
     }
 
     string getType() const {
@@ -367,7 +433,7 @@ public:
         switch (type) {
             case RR_TYPE::A:
                 for (int i = 0; i < rdlength; i++) {
-                    result += to_string((uint8_t)rdata[i]);
+                    result += to_string(static_cast<uint8_t>(rdata[i]));
                     if (i != rdlength - 1) {
                         result += ".";
                     }
@@ -383,11 +449,11 @@ public:
                 }
                 break;
             case RR_TYPE::SOA:
-                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()));
-                result += "\t";
+                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()), this->packet);
+                result += ".\t";
                 offset = strlen(rdata.c_str());
-                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()) + offset + 1);
-                result += "\t";
+                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()) + offset + 1, this->packet);
+                result += ".\t";
                 offset += strlen(rdata.c_str() + offset + 1) + 2;
                 result += to_string(ntohle(*reinterpret_cast<const uint32_t*>(rdata.c_str() + offset)));
                 result += "\t";
@@ -404,12 +470,14 @@ public:
                 result += to_string(ntohle(*reinterpret_cast<const uint32_t*>(rdata.c_str() + offset)));
                 break;
             case RR_TYPE::PTR: case RR_TYPE::NS: case RR_TYPE::CNAME:
-                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()));
+                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()), this->packet);
+                result += ".";
                 break;
             case RR_TYPE::MX:
                 result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str())));
                 result += "\t";
-                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()) + 2);
+                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()) + 2, this->packet);
+                result += ".";
                 break;
             case RR_TYPE::SRV:
                 result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str())));
@@ -421,7 +489,8 @@ public:
                 result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str() + offset)));
                 result += "\t";
                 offset += 2;
-                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()) + offset);
+                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()) + offset, this->packet);
+                result += ".";
                 break;
             default:
                 return rdata;
@@ -436,39 +505,41 @@ private:
     uint32_t ttl = 0;
     uint16_t rdlength = 0;
     string rdata;
+
+    size_t recordLength = 0;
+    const uint8_t* packet;
 };
 
 class DNSPacket {
 public:
-    DNSPacket(const DNSHeader& header, const vector<DNSQuestion>& questions)
+    DNSPacket() = default;
+
+    DNSPacket(const DNSHeader& header, const DNSQuestion& question)
     {
         this->header = header;
-        this->questions.insert(this->questions.end(), questions.begin(), questions.end());
+        this->question = question;
     }
 
     DNSPacket(const uint8_t* buffer)
     {
         this->header = DNSHeader(buffer);
         size_t offset = 6 * sizeof(uint16_t);
-        for (int i = 0; i < header.getQdcount(); i++) {
-            DNSQuestion question(buffer + offset);
-            questions.push_back(question);
-            offset += 2 * sizeof(uint16_t) + question.getNameDns().length() + 1;
-        }
+        this->question = DNSQuestion(buffer + offset);
+        offset += 2 * sizeof(uint16_t) + question.getNameDns().length();
         for (int i = 0; i < header.getAncount(); i++) {
             DNSRecord answer(buffer + offset, buffer);
             answers.push_back(answer);
-            offset += 3 * sizeof(uint16_t) + sizeof(uint32_t) + answer.getRdlength();
+            offset += answer.getRecordLength();
         }
         for (int i = 0; i < header.getNscount(); i++) {
             DNSRecord authority(buffer + offset, buffer);
             authorities.push_back(authority);
-            offset += 3 * sizeof(uint16_t) + sizeof(uint32_t) + authority.getRdlength();
+            offset += authority.getRecordLength();
         }
         for (int i = 0; i < header.getArcount(); i++) {
             DNSRecord additional(buffer + offset, buffer);
             additionals.push_back(additional);
-            offset += 3 * sizeof(uint16_t) + sizeof(uint32_t) + additional.getRdlength();
+            offset += additional.getRecordLength();
         }
     }
 
@@ -495,32 +566,22 @@ public:
         memcpy(buffer.get() + offset, &arcount, sizeof(uint16_t));
         offset += sizeof(uint16_t);
 
-        //questions
-        for (const auto& question : questions) {
-            memcpy(buffer.get() + offset, question.getNameDns().c_str(), question.getNameDns().length() + 1);
-            offset += question.getNameDns().length() + 1;
-            uint16_t qtype = htonse(question.getType());
-            memcpy(buffer.get() + offset, &qtype, sizeof(uint16_t));
-            offset += sizeof(uint16_t);
-            uint16_t qclass = htonse(question.getClass());
-            memcpy(buffer.get() + offset, &qclass, sizeof(uint16_t));
-            offset += sizeof(uint16_t);
-        }
+        //question
+        memcpy(buffer.get() + offset, question.getNameDns().c_str(), question.getNameDns().length());
+        offset += question.getNameDns().length();
+        uint16_t qtype = htonse(question.getType());
+        memcpy(buffer.get() + offset, &qtype, sizeof(uint16_t));
+        offset += sizeof(uint16_t);
+        uint16_t qclass = htonse(question.getClass());
+        memcpy(buffer.get() + offset, &qclass, sizeof(uint16_t));
+        offset += sizeof(uint16_t);
 
         return buffer;
     }
 
     size_t getSize() const
     {
-        //header
-        size_t offset = 6 * sizeof(uint16_t);
-
-        //questions
-        for (const auto& question : questions) {
-            offset += question.getNameDns().length() + 1 + 2 * sizeof(uint16_t);
-        }
-
-        return offset;
+        return 8 * sizeof(uint16_t) + question.getNameDns().length();
     }
 
     const DNSHeader& getHeader() const 
@@ -528,9 +589,9 @@ public:
         return header;
     }
 
-    const vector<DNSQuestion>& getQuestions() const
+    const DNSQuestion& getQuestion() const
     {
-        return questions;
+        return question;
     }
 
     const vector<DNSRecord>& getAnswers() const
@@ -550,15 +611,15 @@ public:
 
 private:
     DNSHeader header;
-    vector<DNSQuestion> questions;
+    DNSQuestion question;
     vector<DNSRecord> answers;
     vector<DNSRecord> authorities;
     vector<DNSRecord> additionals;
 };
 
 void dns_init(const string& host, uint16_t port);
-DNSPacket dns_send_packet(const DNSPacket& packet);
-void dns_print_packet(const DNSPacket& packet);
+DNSPacket dns_send(const DNSPacket& packet);
+void dns_print(const DNSPacket& packet);
 void dns_close();
 
 #endif // DNS_H

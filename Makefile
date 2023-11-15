@@ -8,7 +8,7 @@ CC = g++
 CCFLAGS := -g -O0 -Wall -Wextra -std=c++17 -pedantic
 SRC_FILES := main.cpp error.cpp dns.cpp
 
-.PHONY: all $(PROG_NAME) test clean zip
+.PHONY: all $(PROG_NAME) test clean zip tar
 
 all: $(PROG_NAME)
 
@@ -22,4 +22,7 @@ clean:
 	rm -rf $(PROG_NAME) $(LOGIN).zip
 
 zip: clean
-	zip -r $(LOGIN).zip *.h *.c *.md Makefile LICENSE
+	zip -r $(LOGIN).zip *.h *.cpp README* *.sh Makefile manual.pdf
+
+tar: clean
+	tar -cf $(LOGIN).tar *.h *.cpp README* *.sh Makefile manual.pdf

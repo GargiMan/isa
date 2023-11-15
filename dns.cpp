@@ -8,8 +8,11 @@
 
 #include "dns.h"
 
+using namespace std;
+
 int socket_fd;
-struct sockaddr_in address;
+
+struct sockaddr_in sa;
 
 /**
  * @brief Signal handler
@@ -20,11 +23,11 @@ void sig_handler(const int signal)
     if (signal == SIGINT)
     {
         dns_close();
-        std::exit(0);
+        exit(0);
     }
 }
 
-void dns_init(const std::string& host, uint16_t port) {
+void dns_init(const string& host, const uint16_t port) {
 
     struct hostent *server;
     if ((server = gethostbyname(host.c_str())) == nullptr)
@@ -32,17 +35,17 @@ void dns_init(const std::string& host, uint16_t port) {
         error_exit(ErrorCodes::SocketError, "Host '" + host + "' not found");
     }
 
-    std::memset(&address, 0, sizeof(address));
-    std::memcpy(&address.sin_addr.s_addr, server->h_addr_list[0], server->h_length);
-    address.sin_family = AF_INET;
-    address.sin_port = htons(port);
+    memset(&sa, 0, sizeof(sa));
+    memcpy(&sa.sin_addr.s_addr, server->h_addr_list[0], server->h_length);
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons(port);
 
-    if ((socket_fd = socket(AF_INET, SOCK_DGRAM, 0)) <= 0)
+    if ((socket_fd = socket(sa.sin_family, SOCK_DGRAM, 0)) <= 0)
     {
         error_exit(ErrorCodes::SocketError, "Socket creation failed");
     }
 
-    if (std::signal(SIGINT, sig_handler) == SIG_ERR)
+    if (signal(SIGINT, sig_handler) == SIG_ERR)
     {
         error_exit(ErrorCodes::SignalError, "Signal handler registration failed");
     }
@@ -55,14 +58,14 @@ void dns_close() {
     close(socket_fd);
 }
 
-DNSPacket dns_send_packet(const DNSPacket& packet) {
+DNSPacket dns_send(const DNSPacket& packet) {
 
-    socklen_t address_len = sizeof(address);
+    socklen_t address_len = sizeof(sa);
     uint8_t response_packet[BUFFER_SIZE] = "";
 
     // Send request to server
     int send_fails = 0;
-    while (sendto(socket_fd, packet.getBytes().get(), packet.getSize(), 0, (struct sockaddr *)&address, address_len) == -1)
+    while (sendto(socket_fd, packet.getBytes().get(), packet.getSize(), 0, reinterpret_cast<sockaddr *>(&sa), address_len) == -1)
     {
         if (++send_fails >= MAX_TRANSFER_FAILS)
         {
@@ -73,7 +76,7 @@ DNSPacket dns_send_packet(const DNSPacket& packet) {
 
     // Receive response from server
     int recv_fails = 0;
-    while (recvfrom(socket_fd, response_packet, BUFFER_SIZE, 0, (struct sockaddr *)&address, &address_len) == -1)
+    while (recvfrom(socket_fd, response_packet, BUFFER_SIZE, 0, reinterpret_cast<sockaddr *>(&sa), &address_len) == -1)
     {
         if (++recv_fails >= MAX_TRANSFER_FAILS)
         {
@@ -87,24 +90,25 @@ DNSPacket dns_send_packet(const DNSPacket& packet) {
     return response;
 }
 
-void dns_print_packet(const DNSPacket& packet) {
-    std::cout << "Authoritative: " << (packet.getHeader().getFlags() & DNSHeader::FLAGS::AA ? "Yes" : "No") << ", ";
-    std::cout << "Recursion: " << ((packet.getHeader().getFlags() & DNSHeader::FLAGS::RA) && ( packet.getHeader().getFlags() & DNSHeader::FLAGS::RD) ? "Yes" : "No") << ", ";
-    std::cout << "Truncated: " << (packet.getHeader().getFlags() & DNSHeader::FLAGS::TC ? "Yes" : "No") << std::endl;
-    std::cout << "Question section (" << packet.getHeader().getQdcount() << ")" << std::endl;
-    for (const auto& record : packet.getQuestions()) {
-        std::cout << "\t" << record.getNameDot() << "\t" << record.getTypeString() << "\t" << record.getClassString() << std::endl;
+void dns_print(const DNSPacket& packet) {
+    cout << "Authoritative: " << (packet.getHeader().getFlags() & DNSHeader::FLAGS::AA ? "Yes" : "No") << ", ";
+    cout << "Recursion: " << ((packet.getHeader().getFlags() & DNSHeader::FLAGS::RA) && ( packet.getHeader().getFlags() & DNSHeader::FLAGS::RD) ? "Yes" : "No") << ", ";
+    cout << "Truncated: " << (packet.getHeader().getFlags() & DNSHeader::FLAGS::TC ? "Yes" : "No") << endl;
+    cout << "Question section (" << packet.getHeader().getQdcount() << ")" << endl;
+    if (packet.getHeader().getQdcount() > 0) {
+        cout << "\t" << packet.getQuestion().getNameDot() << "\t" << packet.getQuestion().getTypeString() << "\t" << packet.getQuestion().getClassString() << endl;
     }
-    std::cout << "Answer section (" << packet.getHeader().getAncount() << ")" << std::endl;
+    cout << "Answer section (" << packet.getHeader().getAncount() << ")" << endl;
     for (const auto& record : packet.getAnswers()) {
-        std::cout << "\t" << record.getName() << "\t" << record.getType() << "\t" << record.getClass() << "\t" << record.getTtl() << "\t" << record.getRdata() << std::endl;
+        cout << "\t" << record.getName() << "\t" << record.getType() << "\t" << record.getClass() << "\t" << record.getTtl() << "\t" << record.getRdata() << endl;
     }
-    std::cout << "Authority section (" << packet.getHeader().getNscount() << ")" << std::endl;
+    cout << "Authority section (" << packet.getHeader().getNscount() << ")" << endl;
     for (const auto& record : packet.getAuthorities()) {
-        std::cout << "\t" << record.getName() << "\t" << record.getType() << "\t" << record.getClass() << "\t" << record.getTtl() << "\t" << record.getRdata() << std::endl;
+        cout << "\t" << record.getName() << "\t" << record.getType() << "\t" << record.getClass() << "\t" << record.getTtl() << "\t" << record.getRdata() << endl;
     }
-    std::cout << "Additional section (" << packet.getHeader().getArcount() << ")" << std::endl;
+    cout << "Additional section (" << packet.getHeader().getArcount() << ")" << endl;
     for (const auto& record : packet.getAdditionals()) {
-        std::cout << "\t" << record.getName() << "\t" << record.getType() << "\t" << record.getClass() << "\t" << record.getTtl() << "\t" << record.getRdata() << std::endl;
+        cout << "\t" << record.getName() << "\t" << record.getType() << "\t" << record.getClass() << "\t" << record.getTtl() << "\t" << record.getRdata() << endl;
     }
+    cout << endl;
 }
