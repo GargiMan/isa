@@ -10,6 +10,7 @@
 #define DNS_H
 
 #include <iostream>
+#include <iomanip>
 #include <vector>
 #include <string>
 #include <cstring>
@@ -84,7 +85,7 @@ inline string getNameToDot(const uint8_t* buffer) {
     return name;
 }
 
-inline string getNameToDot(const uint8_t* buffer, const uint8_t* packet) {
+inline string getNameToDotRef(const uint8_t* buffer, const uint8_t* packet) {
     string name = getNameToDot(buffer);
     //TODO while or if ???
     while (name[name.length() - 2] == static_cast<char>(0xc0)) {
@@ -93,6 +94,15 @@ inline string getNameToDot(const uint8_t* buffer, const uint8_t* packet) {
         name += getNameToDot(packet + name_offset);
     }
     return name;
+}
+
+inline size_t getNameToDotRefLength(const uint8_t* buffer) {
+    string name = getNameToDot(buffer);
+    if (name[name.length() - 2] == static_cast<char>(0xc0)) {
+        return name.length();
+    } else {
+        return name.length() + 2;
+    }
 }
 
 inline string getNameToDns(const string& address) {
@@ -233,22 +243,22 @@ public:
                 warning_print("Server failure - The name server was unable to process this query due to a problem with the name server.");
                 break;
             case 3:
-                warning_print("Name Error - Meaningful only for responses from an authoritative name server, the domain name referenced in the query does not exist.");
+                warning_print("Name error - The domain name referenced in the query does not exist.");
                 break;
             case 4:
-                warning_print("Not Implemented - The name server does not support the requested kind of query.");
+                warning_print("Not implemented - The name server does not support the requested kind of query.");
                 break;
             case 5:
                 warning_print("Refused - The name server refuses to perform the specified operation for policy reasons.");
                 break;
             case 6:
-                warning_print("YXDomain - Name Exists when it should not.");
+                warning_print("YXDomain - Name exists when it should not.");
                 break;
             case 7:
-                warning_print("YXRRSet - RR Set Exists when it should not.");
+                warning_print("YXRRSet - RR set exists when it should not.");
                 break;
             case 8:
-                warning_print("NotAuth - Server Not Authoritative for zone.");
+                warning_print("NotAuth - Server not authoritative for zone.");
                 break;
             case 9:
                 warning_print("NotZone - Name not contained in zone.");
@@ -341,6 +351,12 @@ public:
         switch (class_) {
             case 0x0001:
                 return "IN";
+            case 0x0002:
+                return "CS";
+            case 0x0003:
+                return "CH";
+            case 0x0004:
+                return "HS";
             default:
                 return "UNKNOWN";
         }
@@ -364,7 +380,7 @@ public:
             this->name = "@";   //root
             offset += sizeof(uint8_t);
         } else if (buffer[0] == 0xc0) {
-            this->name = getNameToDot(packet + buffer[1], this->packet);
+            this->name = getNameToDotRef(packet + buffer[1], this->packet);
             offset += sizeof(uint16_t);
         } else {
             this->name = getNameToDot(buffer);
@@ -414,6 +430,12 @@ public:
         switch (class_) {
             case 0x0001:
                 return "IN";
+            case 0x0002:
+                return "CS";
+            case 0x0003:
+                return "CH";
+            case 0x0004:
+                return "HS";
             default:
                 return "UNKNOWN";
         }
@@ -449,47 +471,47 @@ public:
                 }
                 break;
             case RR_TYPE::SOA:
-                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()), this->packet);
-                result += ".\t";
-                offset = strlen(rdata.c_str());
-                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()) + offset + 1, this->packet);
-                result += ".\t";
-                offset += strlen(rdata.c_str() + offset + 1) + 2;
+                result += getNameToDotRef(reinterpret_cast<const uint8_t*>(rdata.c_str()), this->packet);
+                result += ". ";
+                offset = getNameToDotRefLength(reinterpret_cast<const uint8_t*>(rdata.c_str()));
+                result += getNameToDotRef(reinterpret_cast<const uint8_t*>(rdata.c_str()) + offset, this->packet);
+                result += ". ";
+                offset += getNameToDotRefLength(reinterpret_cast<const uint8_t*>(rdata.c_str()) + offset);
                 result += to_string(ntohle(*reinterpret_cast<const uint32_t*>(rdata.c_str() + offset)));
-                result += "\t";
+                result += " ";
                 offset += 4;
                 result += to_string(ntohle(*reinterpret_cast<const uint32_t*>(rdata.c_str() + offset)));
-                result += "\t";
+                result += " ";
                 offset += 4;
                 result += to_string(ntohle(*reinterpret_cast<const uint32_t*>(rdata.c_str() + offset)));
-                result += "\t";
+                result += " ";
                 offset += 4;
                 result += to_string(ntohle(*reinterpret_cast<const uint32_t*>(rdata.c_str() + offset)));
-                result += "\t";
+                result += " ";
                 offset += 4;
                 result += to_string(ntohle(*reinterpret_cast<const uint32_t*>(rdata.c_str() + offset)));
                 break;
             case RR_TYPE::PTR: case RR_TYPE::NS: case RR_TYPE::CNAME:
-                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()), this->packet);
+                result += getNameToDotRef(reinterpret_cast<const uint8_t*>(rdata.c_str()), this->packet);
                 result += ".";
                 break;
             case RR_TYPE::MX:
                 result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str())));
-                result += "\t";
-                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()) + 2, this->packet);
+                result += " ";
+                result += getNameToDotRef(reinterpret_cast<const uint8_t*>(rdata.c_str()) + 2, this->packet);
                 result += ".";
                 break;
             case RR_TYPE::SRV:
                 result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str())));
-                result += "\t";
+                result += " ";
                 offset = 2;
                 result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str() + offset)));
-                result += "\t";
+                result += " ";
                 offset += 2;
                 result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str() + offset)));
-                result += "\t";
+                result += " ";
                 offset += 2;
-                result += getNameToDot(reinterpret_cast<const uint8_t*>(rdata.c_str()) + offset, this->packet);
+                result += getNameToDotRef(reinterpret_cast<const uint8_t*>(rdata.c_str()) + offset, this->packet);
                 result += ".";
                 break;
             default:

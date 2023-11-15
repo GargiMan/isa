@@ -91,24 +91,57 @@ DNSPacket dns_send(const DNSPacket& packet) {
 }
 
 void dns_print(const DNSPacket& packet) {
+    //find longest name
+    size_t longest_name = packet.getHeader().getQdcount() > 0 ? packet.getQuestion().getNameDot().length() : 0;
+    for (const auto &record : packet.getAnswers()) {
+        if (record.getName().length() > longest_name) {
+            longest_name = record.getName().length();
+        }
+    }
+    for (const auto &record : packet.getAuthorities()) {
+        if (record.getName().length() > longest_name) {
+            longest_name = record.getName().length();
+        }
+    }
+    for (const auto &record : packet.getAdditionals()) {
+        if (record.getName().length() > longest_name) {
+            longest_name = record.getName().length();
+        }
+    }
+
+    //print packet
     cout << "Authoritative: " << (packet.getHeader().getFlags() & DNSHeader::FLAGS::AA ? "Yes" : "No") << ", ";
-    cout << "Recursion: " << ((packet.getHeader().getFlags() & DNSHeader::FLAGS::RA) && ( packet.getHeader().getFlags() & DNSHeader::FLAGS::RD) ? "Yes" : "No") << ", ";
+    cout << "Recursion: " << (packet.getHeader().getFlags() & DNSHeader::FLAGS::RA && packet.getHeader().getFlags() & DNSHeader::FLAGS::RD ? "Yes" : "No") << ", ";
     cout << "Truncated: " << (packet.getHeader().getFlags() & DNSHeader::FLAGS::TC ? "Yes" : "No") << endl;
     cout << "Question section (" << packet.getHeader().getQdcount() << ")" << endl;
     if (packet.getHeader().getQdcount() > 0) {
-        cout << "\t" << packet.getQuestion().getNameDot() << "\t" << packet.getQuestion().getTypeString() << "\t" << packet.getQuestion().getClassString() << endl;
+        cout << "  " << setw(static_cast<int>(longest_name) + 15) << left << packet.getQuestion().getNameDot()
+             << setw(10) << left << packet.getQuestion().getClassString()
+             << setw(10) << left << packet.getQuestion().getTypeString() << endl;
     }
     cout << "Answer section (" << packet.getHeader().getAncount() << ")" << endl;
-    for (const auto& record : packet.getAnswers()) {
-        cout << "\t" << record.getName() << "\t" << record.getType() << "\t" << record.getClass() << "\t" << record.getTtl() << "\t" << record.getRdata() << endl;
+    for (const auto &record : packet.getAnswers()) {
+        cout << "  " << setw(static_cast<int>(longest_name) + 4) << left << record.getName()
+             << setw(11) << left << record.getTtl()
+             << setw(10) << left << record.getClass()
+             << setw(10) << left << record.getType()
+             << record.getRdata() << endl;
     }
     cout << "Authority section (" << packet.getHeader().getNscount() << ")" << endl;
-    for (const auto& record : packet.getAuthorities()) {
-        cout << "\t" << record.getName() << "\t" << record.getType() << "\t" << record.getClass() << "\t" << record.getTtl() << "\t" << record.getRdata() << endl;
+    for (const auto &record : packet.getAuthorities()) {
+        cout << "  " << setw(static_cast<int>(longest_name) + 4) << left << record.getName()
+             << setw(11) << left << record.getTtl()
+             << setw(10) << left << record.getClass()
+             << setw(10) << left << record.getType()
+             << record.getRdata() << endl;
     }
     cout << "Additional section (" << packet.getHeader().getArcount() << ")" << endl;
-    for (const auto& record : packet.getAdditionals()) {
-        cout << "\t" << record.getName() << "\t" << record.getType() << "\t" << record.getClass() << "\t" << record.getTtl() << "\t" << record.getRdata() << endl;
+    for (const auto &record : packet.getAdditionals()) {
+        cout << "  " << setw(static_cast<int>(longest_name) + 4) << left << record.getName()
+             << setw(11) << left << record.getTtl()
+             << setw(10) << left << record.getClass()
+             << setw(10) << left << record.getType()
+             << record.getRdata() << endl;
     }
     cout << endl;
 }

@@ -30,13 +30,14 @@ void print_help()
 {
     cout << "Usage: dns [-r] [-x] [-6] -s SERVER [-p PORT] ADDRESS [ADDRESS...]" << endl;
     cout << "       dns --help" << endl;
-    cout << "       Send DNS request with all ADDRESS values to SERVER and print response" << endl;
+    cout << "       Send DNS requests for all IPv4 ADDRESS values to SERVER and print responses" << endl;
     cout << "Options:" << endl;
-    cout << "  -r          required recursion (Recursion Desired = 1), otherwise without recursion" << endl;
-    cout << "  -x          inverse request, instead of straight" << endl;
-    cout << "  -6          request type AAAA instead of default type A" << endl;
+    cout << "  -r          recursion desired, otherwise without recursion" << endl;
+    cout << "  -x          request type PTR (domain) instead of default type A (IPv4)" << endl;
+    cout << "  -6          request type AAAA (IPv6) instead of default type A (IPv4)" << endl;
     cout << "  -s SERVER   server host name or IP address, where to send request" << endl;
     cout << "  -p PORT     server port number, default 53" << endl;
+    cout << "  ADDRESS     IPv4/IPv6 address or domain depending on request type" << endl;
     cout << "  --help      print this help and exit program" << endl;
 }
 
