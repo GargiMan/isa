@@ -108,6 +108,10 @@ inline size_t getNameToDotRefLength(const uint8_t* buffer) {
 }
 
 inline string getNameToDns(const string& address) {
+    if (address.empty()) {
+        return {'\0'};
+    }
+
     size_t pos = 0;
     char len = 0;
     string name = "\1";
@@ -117,7 +121,9 @@ inline string getNameToDns(const string& address) {
             name[pos] = len;
             len = 0;
             pos = i + 1;
-            name += '\0';
+            if (name[name.length() - 1] != '\0') {
+                name += '\0';
+            }
         } else {
             name += address[i];
             len++;
@@ -136,15 +142,49 @@ inline string getNameToDns(const string& address) {
 }
 
 inline string getInverseName(const string& address) {
-    string name;
-    const bool isIPv6 = address.find(':') != string::npos;
-    istringstream iss(address);
-    string group;
-    while (getline(iss, group, isIPv6 ? ':' : '.')) {
-        name.insert(0, group + ".");
+    // Convert address from text to binary IPv4 address to reversed ARPA order
+    in_addr ipv4{};
+    if (inet_pton(AF_INET, address.c_str(), &ipv4) == 1) {
+        char reverseArpa[INET_ADDRSTRLEN];
+        if (inet_ntop(AF_INET, &ipv4, reverseArpa, sizeof(reverseArpa)) == nullptr) {
+            warning_print("Error converting address back to ASCII characters");
+            return "in-addr.arpa";
+        }
+
+        // Reverse the order of the octets
+        string name;
+        for (int i = 3; i >= 0; --i) {
+            name += to_string((ipv4.s_addr >> (i * 8)) & 0xFF);
+            name += ".";
+        }
+
+        return name+"in-addr.arpa";
     }
-    name += isIPv6 ? "ip6.arpa" : "in-addr.arpa";
-    return name;
+
+    // Convert address from text to binary IPv6 address to reversed ARPA order
+    in6_addr ipv6{};
+    if (inet_pton(AF_INET6, address.c_str(), &ipv6) == 1) {
+        char reverseArpa[INET6_ADDRSTRLEN];
+        if (inet_ntop(AF_INET6, &ipv6, reverseArpa, sizeof(reverseArpa)) == nullptr) {
+            warning_print("Error converting address back to ASCII characters");
+            return "ip6.arpa";
+        }
+
+        // 48 offset for ASCII 0-9, 87 offset for ASCII a-f
+        // Reverse the order of the octets
+        string name;
+        for (int i = 15; i >= 0; --i) {
+            name += static_cast<char>((ipv6.s6_addr[i] & 0xF) + ((ipv6.s6_addr[i] & 0xF) > 9 ? 87 : 48));
+            name += ".";
+            name += static_cast<char>((ipv6.s6_addr[i] >> 4 & 0xF) + ((ipv6.s6_addr[i] >> 4 & 0xF) > 9 ? 87 : 48));
+            name += ".";
+        }
+
+        return name+"ip6.arpa";
+    }
+
+    warning_print("Address '"+address+"' is not valid IPv4 or IPv6 address");
+    return ".";
 }
 
 class RR_TYPE {
@@ -316,8 +356,8 @@ public:
 
     DNSQuestion(const uint8_t* buffer) :
         name(getNameToDot(buffer)),
-        type(ntohse(*reinterpret_cast<const uint16_t*>(buffer + name.length() + 2))),
-        class_(ntohse(*reinterpret_cast<const uint16_t*>(buffer + name.length() + 4))) {}
+        type(ntohse(*reinterpret_cast<const uint16_t*>(buffer + name.length() + (name.empty() ? 1 : 2)))),
+        class_(ntohse(*reinterpret_cast<const uint16_t*>(buffer + name.length() + (name.empty() ? 3 : 4)))) {}
 
     string getNameDot() const {
         return this->name[this->name.length() - 1] == '.' ? this->name : this->name + ".";
@@ -369,7 +409,7 @@ public:
         size_t offset = 0;
 
         if (buffer[0] == 0x00) {
-            this->name = "@";   //root
+            this->name = "";
             offset += sizeof(uint8_t);
         } else if (buffer[0] == 0xc0) {
             this->name = getNameToDotRef(packet + buffer[1], this->packet);
