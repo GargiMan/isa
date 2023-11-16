@@ -18,7 +18,8 @@ enum class ErrorCodes
     InputError = 2,
     SocketError = 3,
     TransferError = 4,
-    SignalError = 5
+    SignalError = 5,
+    TimeoutError = 6
 };
 
 void error_exit(ErrorCodes errcode, const std::string &msg);

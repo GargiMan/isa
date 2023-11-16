@@ -31,7 +31,6 @@
 #define close(a) (void)closesocket(a)
 #define socklen_t int
 
-#include <io.h>
 
 #else // unix
 
@@ -47,6 +46,7 @@
 using namespace std;
 
 constexpr int MAX_TRANSFER_FAILS = 10;
+constexpr int MAX_RESPONSE_WAIT_SEC = 10;
 //data packet max size 4 + 65464
 constexpr int BUFFER_SIZE = 65468;
 
@@ -87,22 +87,24 @@ inline string getNameToDot(const uint8_t* buffer) {
 
 inline string getNameToDotRef(const uint8_t* buffer, const uint8_t* packet) {
     string name = getNameToDot(buffer);
-    //TODO while or if ???
-    while (name[name.length() - 2] == static_cast<char>(0xc0)) {
+
+    if (name[name.length() - 2] == static_cast<char>(0xc0)) {
         const uint8_t name_offset = name[name.length() - 1];
         name = name.substr(0, name.length() - 2);
         name += getNameToDot(packet + name_offset);
     }
+
     return name;
 }
 
 inline size_t getNameToDotRefLength(const uint8_t* buffer) {
     string name = getNameToDot(buffer);
+
     if (name[name.length() - 2] == static_cast<char>(0xc0)) {
         return name.length();
-    } else {
-        return name.length() + 2;
     }
+
+    return name.length() + 2;
 }
 
 inline string getNameToDns(const string& address) {
@@ -120,10 +122,12 @@ inline string getNameToDns(const string& address) {
             name += address[i];
             len++;
         }
+
         if (i == address.length() - 1) {
             name[pos] = len;
         }
     }
+
     if (name[name.length() - 1] != '\0') {
         name += '\0';
     }
@@ -134,14 +138,12 @@ inline string getNameToDns(const string& address) {
 inline string getInverseName(const string& address) {
     string name;
     const bool isIPv6 = address.find(':') != string::npos;
-
     istringstream iss(address);
     string group;
     while (getline(iss, group, isIPv6 ? ':' : '.')) {
         name.insert(0, group + ".");
     }
     name += isIPv6 ? "ip6.arpa" : "in-addr.arpa";
-
     return name;
 }
 
@@ -536,14 +538,12 @@ class DNSPacket {
 public:
     DNSPacket() = default;
 
-    DNSPacket(const DNSHeader& header, const DNSQuestion& question)
-    {
+    DNSPacket(const DNSHeader& header, const DNSQuestion& question) {
         this->header = header;
         this->question = question;
     }
 
-    DNSPacket(const uint8_t* buffer)
-    {
+    DNSPacket(const uint8_t* buffer) {
         this->header = DNSHeader(buffer);
         size_t offset = 6 * sizeof(uint16_t);
         this->question = DNSQuestion(buffer + offset);
@@ -565,8 +565,7 @@ public:
         }
     }
 
-    unique_ptr<uint8_t[]> getBytes() const
-    {
+    unique_ptr<uint8_t[]> getBytes() const {
         unique_ptr<uint8_t[]> buffer(new uint8_t[getSize()]);
         //header
         const uint16_t id = htonse(header.getId());
@@ -601,33 +600,27 @@ public:
         return buffer;
     }
 
-    size_t getSize() const
-    {
+    size_t getSize() const {
         return 8 * sizeof(uint16_t) + question.getNameDns().length();
     }
 
-    const DNSHeader& getHeader() const 
-    {
+    const DNSHeader& getHeader() const {
         return header;
     }
 
-    const DNSQuestion& getQuestion() const
-    {
+    const DNSQuestion& getQuestion() const {
         return question;
     }
 
-    const vector<DNSRecord>& getAnswers() const
-    {
+    const vector<DNSRecord>& getAnswers() const {
         return answers;
     }
 
-    const vector<DNSRecord>& getAuthorities() const
-    {
+    const vector<DNSRecord>& getAuthorities() const {
         return authorities;
     }
 
-    const vector<DNSRecord>& getAdditionals() const
-    {
+    const vector<DNSRecord>& getAdditionals() const {
         return additionals;
     }
 

@@ -10,44 +10,75 @@
 
 using namespace std;
 
-int socket_fd;
-
-struct sockaddr_in sa;
+int socket_fd = -1;
+struct addrinfo hints{}, *servinfo, *p;
 
 /**
  * @brief Signal handler
  * @param signal received signal
  */
-void sig_handler(const int signal)
-{
-    if (signal == SIGINT)
-    {
-        dns_close();
-        exit(0);
+void sig_handler(const int signal) {
+    switch (signal) {
+        case SIGINT:
+            dns_close();
+            exit(0);
+        case SIGALRM:
+            dns_close();
+            error_exit(ErrorCodes::TimeoutError, "Response timeout "+to_string(MAX_RESPONSE_WAIT_SEC)+"s");
+        default:
+            break;
     }
 }
 
 void dns_init(const string& host, const uint16_t port) {
 
-    struct hostent *server;
-    if ((server = gethostbyname(host.c_str())) == nullptr)
-    {
-        error_exit(ErrorCodes::SocketError, "Host '" + host + "' not found");
+    hints.ai_family = AF_UNSPEC; // Allow IPv4 or IPv6
+    hints.ai_socktype = SOCK_DGRAM; // Datagram socket
+
+    int status;
+    if ((status = getaddrinfo(host.c_str(), to_string(port).c_str(), &hints, &servinfo)) != 0) {
+        error_exit(ErrorCodes::SocketError, "Server - " + string(gai_strerror(status)));
     }
 
-    memset(&sa, 0, sizeof(sa));
-    memcpy(&sa.sin_addr.s_addr, server->h_addr_list[0], server->h_length);
-    sa.sin_family = AF_INET;
-    sa.sin_port = htons(port);
+    for (p = servinfo; p != nullptr; p = p->ai_next) {
+        // Socket creation failed, try the next address
+        if ((socket_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+            continue;
+        }
 
-    if ((socket_fd = socket(sa.sin_family, SOCK_DGRAM, 0)) <= 0)
-    {
+        // Connection failed, close the socket and try the next address
+        if (connect(socket_fd, p->ai_addr, p->ai_addrlen) == -1) {
+            close(socket_fd);
+            continue;
+        }
+
+        // Address is not IPv4 or IPv6, close the socket and try the next address
+        if (p->ai_family != AF_INET && p->ai_family != AF_INET6) {
+            close(socket_fd);
+            continue;
+        }
+
+        // Connected successfully
+        break;
+    }
+
+    // No address succeeded
+    if (p == nullptr) {
+        if (servinfo != nullptr) {
+            freeaddrinfo(servinfo);
+        }
         error_exit(ErrorCodes::SocketError, "Socket creation failed");
+        return;
     }
 
-    if (signal(SIGINT, sig_handler) == SIG_ERR)
-    {
-        error_exit(ErrorCodes::SignalError, "Signal handler registration failed");
+    if (signal(SIGINT, sig_handler) == SIG_ERR) {
+        dns_close();
+        error_exit(ErrorCodes::SignalError, "Signal handler for 'SIGINT' registration failed");
+    }
+
+    if (signal(SIGALRM, sig_handler) == SIG_ERR) {
+        dns_close();
+        error_exit(ErrorCodes::SignalError, "Signal handler for 'SIGALRM' registration failed");
     }
 }
 
@@ -55,35 +86,39 @@ void dns_init(const string& host, const uint16_t port) {
  * @brief Close the socket
  */
 void dns_close() {
+    freeaddrinfo(servinfo);
     close(socket_fd);
 }
 
 DNSPacket dns_send(const DNSPacket& packet) {
 
-    socklen_t address_len = sizeof(sa);
+    if (p == nullptr) {
+        error_exit(ErrorCodes::SocketError, "Socket not initialized");
+    }
+
     uint8_t response_packet[BUFFER_SIZE] = "";
 
     // Send request to server
     int send_fails = 0;
-    while (sendto(socket_fd, packet.getBytes().get(), packet.getSize(), 0, reinterpret_cast<sockaddr *>(&sa), address_len) == -1)
-    {
-        if (++send_fails >= MAX_TRANSFER_FAILS)
-        {
+    while (sendto(socket_fd, packet.getBytes().get(), packet.getSize(), 0, p->ai_addr, p->ai_addrlen) == -1) {
+        if (++send_fails >= MAX_TRANSFER_FAILS) {
             dns_close();
             error_exit(ErrorCodes::TransferError, "Packet send failed");
         }
     }
 
+    alarm(MAX_RESPONSE_WAIT_SEC);
+
     // Receive response from server
     int recv_fails = 0;
-    while (recvfrom(socket_fd, response_packet, BUFFER_SIZE, 0, reinterpret_cast<sockaddr *>(&sa), &address_len) == -1)
-    {
-        if (++recv_fails >= MAX_TRANSFER_FAILS)
-        {
+    while (recvfrom(socket_fd, response_packet, BUFFER_SIZE, 0, p->ai_addr, &p->ai_addrlen) == -1) {
+        if (++recv_fails >= MAX_TRANSFER_FAILS) {
             dns_close();
             error_exit(ErrorCodes::TransferError, "Packet receive failed");
         }
     }
+
+    alarm(0);
 
     DNSPacket response = DNSPacket(response_packet);
 
