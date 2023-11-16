@@ -47,8 +47,8 @@ using namespace std;
 
 constexpr int MAX_TRANSFER_FAILS = 10;
 constexpr int MAX_RESPONSE_WAIT_SEC = 10;
-//data packet max size 4 + 65464
-constexpr int BUFFER_SIZE = 65468;
+// according to RFC 1035, the maximum size of a UDP datagram is 512 bytes, but some DNS servers can send larger responses
+constexpr int BUFFER_SIZE = 4096;
 
 inline uint16_t test_value = 0x01;
 inline bool is_little_endian = (*reinterpret_cast<uint8_t*>(&test_value)) == 0x01;
@@ -165,20 +165,10 @@ public:
     RR_TYPE() = delete;
     constexpr RR_TYPE(const Type type) : type(type) {}
 
-    explicit operator uint16_t() const {
-        return type;
-    }
-
+    explicit operator uint16_t() const { return type; }
+    explicit operator string() const { return typeToString(type); }
     constexpr bool operator==(const RR_TYPE a) const { return type == a.type; }
     constexpr bool operator!=(const RR_TYPE a) const { return type != a.type; }
-
-    uint16_t value() const {
-        return type;
-    }
-
-    string toString() const  {
-        return typeToString(type);
-    }
 
     static string typeToString(const uint16_t type) {
         switch (type) {
@@ -321,7 +311,7 @@ public:
 
     DNSQuestion(const string& address, const RR_TYPE type) :
         name(type == RR_TYPE::Type::PTR ? getInverseName(address) : address),
-        type(type.value()),
+        type(type),
         class_(0x0001) {}
 
     DNSQuestion(const uint8_t* buffer) :
