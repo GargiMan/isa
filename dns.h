@@ -17,7 +17,6 @@
 #include <cstdint>
 #include <csignal>
 #include <memory>
-#include <sstream>
 
 #include "error.h"
 
@@ -198,7 +197,6 @@ public:
         MX = 0x000f,
         TXT = 0x0010,
         AAAA = 0x001c,
-        SRV = 0x0021,
         ANY = 0x00ff,
     };
 
@@ -228,8 +226,6 @@ public:
                 return "TXT";
             case AAAA:
                 return "AAAA";
-            case SRV:
-                return "SRV";
             case ANY:
                 return "ANY";
             default:
@@ -264,6 +260,14 @@ public:
         this->ancount = ntohse(ancount);
         this->nscount = ntohse(nscount);
         this->arcount = ntohse(arcount);
+
+        if (this->id != static_cast<uint16_t>(getpid())) {
+            warning_print("ID of response packet does not match ID of request packet");
+        }
+
+        if (!(flags & QR_RESPONSE)) {
+            warning_print("Request packet received");
+        }
 
         switch (flags & RCODE_MASK) {
             case 0:
@@ -482,11 +486,17 @@ public:
     }
 
     string getRdata() const {
+        in6_addr ipv6{};
         string result;
         size_t offset;
         switch (type) {
             case RR_TYPE::A:
+                if (rdlength != 4) {
+                    warning_print("A record has invalid length");
+                    return rdata;
+                }
                 for (int i = 0; i < rdlength; i++) {
+                    // Convert each octet to ASCII character
                     result += to_string(static_cast<uint8_t>(rdata[i]));
                     if (i != rdlength - 1) {
                         result += ".";
@@ -494,12 +504,28 @@ public:
                 }
                 break;
             case RR_TYPE::AAAA:
+                if (rdlength != 16) {
+                    warning_print("AAAA record has invalid length");
+                    return rdata;
+                }
                 for (int i = 0; i < rdlength; i += 2) {
-                    result += to_string(rdata[i]);
-                    result += to_string(rdata[i + 1]);
+                    // 48 offset for ASCII 0-9, 87 offset for ASCII a-f
+                    // Convert each octet to ASCII characters
+                    result += static_cast<char>((rdata[i] >> 4 & 0xF) + ((rdata[i] >> 4 & 0xF) > 9 ? 87 : 48));
+                    result += static_cast<char>((rdata[i] & 0xF) + ((rdata[i] & 0xF) > 9 ? 87 : 48));
+                    result += static_cast<char>((rdata[i+1] >> 4 & 0xF) + ((rdata[i+1] >> 4 & 0xF) > 9 ? 87 : 48));
+                    result += static_cast<char>((rdata[i+1] & 0xF) + ((rdata[i+1] & 0xF) > 9 ? 87 : 48));
                     if (i != rdlength - 2) {
                         result += ":";
                     }
+                }
+                // Convert expanded IPv6 address to shortened form
+                if (inet_pton(AF_INET6, result.c_str(), &ipv6) == 1) {
+                    char address[INET6_ADDRSTRLEN];
+                    if (inet_ntop(AF_INET6, &ipv6, address, sizeof(address)) == nullptr) {
+                        break;
+                    }
+                    result = string(address);
                 }
                 break;
             case RR_TYPE::SOA:
@@ -533,18 +559,10 @@ public:
                 result += getNameToDotRef(reinterpret_cast<const uint8_t*>(rdata.c_str()) + 2, this->packet);
                 result += ".";
                 break;
-            case RR_TYPE::SRV:
-                result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str())));
-                result += " ";
-                offset = 2;
-                result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str() + offset)));
-                result += " ";
-                offset += 2;
-                result += to_string(ntohse(*reinterpret_cast<const uint16_t*>(rdata.c_str() + offset)));
-                result += " ";
-                offset += 2;
-                result += getNameToDotRef(reinterpret_cast<const uint8_t*>(rdata.c_str()) + offset, this->packet);
-                result += ".";
+            case RR_TYPE::TXT:
+                result += "\"";
+                result += rdata.substr(1, rdata[0]);
+                result += "\"";
                 break;
             default:
                 return rdata;
@@ -561,7 +579,7 @@ private:
     string rdata;
 
     size_t recordLength = 0;
-    const uint8_t* packet;
+    const uint8_t* packet = nullptr;
 };
 
 class DNSPacket {
@@ -625,7 +643,6 @@ public:
         offset += sizeof(uint16_t);
         uint16_t qclass = htonse(question.getClass());
         memcpy(buffer.get() + offset, &qclass, sizeof(uint16_t));
-        offset += sizeof(uint16_t);
 
         return buffer;
     }

@@ -11,7 +11,7 @@
 using namespace std;
 
 int socket_fd = -1;
-struct addrinfo hints{}, *servinfo, *p;
+addrinfo hints{}, *servinfo, *p;
 
 /**
  * @brief Signal handler
