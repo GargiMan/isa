@@ -19,7 +19,7 @@ test:
 	./test.sh
 
 clean:
-	rm -rf $(PROG_NAME) $(LOGIN).zip
+	rm -rf $(PROG_NAME) $(LOGIN).zip $(LOGIN).tar
 
 zip: clean
 	zip -r $(LOGIN).zip *.h *.cpp README* *.sh Makefile manual.pdf

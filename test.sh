@@ -9,8 +9,8 @@ for address in $addresses; do
     for dns_address in $dns_addresses; do
         echo "dig $address @$dns_address"
         dig "$address" @"$dns_address"
-        echo "nslookup $address $dns_address"
-        nslookup type=CNAME "$address" "$dns_address"
+        echo "dns $address $dns_address"
+        ./dns -r -s "$dns_address" "$address"
     done
 done
 
