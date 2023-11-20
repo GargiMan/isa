@@ -15,3 +15,13 @@ for address in $addresses; do
 done
 
 # opts:   type=A/AAAA/CNAME , recurse
+
+#Test:
+#-r -6 -s 8.8.8.8 2607:f8b0:4003:c00::6a
+#-r -s kazi.fit.vutbr.cz www.fit.vut.cz
+#-s 192.168.1.1 video1.fit.vutbr.cz wis.fit.vutbr.cz
+#-x -s kazi.fit.vutbr.cz 142.251.37.100
+#-x -s kazi.fit.vutbr.cz 2001:67c:1220:809::93e5:917
+#./dns -s kazi.fit.vutbr.cz wis.fit.vut.cz
+# testy na valid a invalid ipv4, ipv6 a hostname
+# testy na valid a invalid servername

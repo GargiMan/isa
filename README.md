@@ -29,3 +29,5 @@ Program can be run with following arguments:
 ### Files included: 
 main.cpp, dns.h, dns.cpp, error.h, error.cpp, Makefile, README.md, manual.pdf
 
+
+TODO: popis + rozsirenia/limity
