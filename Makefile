@@ -8,7 +8,7 @@ CC = g++
 CCFLAGS := -g -O0 -Wall -Wextra -std=c++17 -pedantic
 SRC_FILES := main.cpp error.cpp dns.cpp
 
-.PHONY: all $(PROG_NAME) test clean zip tar
+.PHONY: all $(PROG_NAME) test pdf clean zip tar
 
 all: $(PROG_NAME)
 
@@ -18,11 +18,14 @@ $(PROG_NAME): $(SRC_FILES)
 test:
 	./test.sh
 
-clean:
-	rm -rf $(PROG_NAME) $(LOGIN).zip $(LOGIN).tar
+pdf:
+	pandoc -V geometry:margin=1in manual.md -o manual.pdf
 
-zip: clean
+clean:
+	rm -rf $(PROG_NAME) $(LOGIN).zip $(LOGIN).tar manual.pdf
+
+zip: clean pdf
 	zip -r $(LOGIN).zip *.h *.cpp README* *.sh Makefile manual.pdf
 
-tar: clean
+tar: clean pdf
 	tar -cf $(LOGIN).tar *.h *.cpp README* *.sh Makefile manual.pdf
