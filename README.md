@@ -39,6 +39,7 @@ Program has following extensions:
 
 Program has following limits:
 - program can print only record data of types that can request (A, NS, CNAME, SOA, PTR, MX, TXT, AAAA), other types of record data are printed in raw format
+- program arguments are parsed with string comparison, so combination of short options (e.g. -rx) is not supported
 
 ### Files included: 
 main.cpp, dns.h, dns.cpp, error.h, error.cpp, Makefile, README.md, manual.pdf
