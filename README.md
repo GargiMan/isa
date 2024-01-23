@@ -20,7 +20,7 @@ Program can be run with following arguments:
 `-r` - recursive resolution  
 `-x` - type of DNS query PTR (reverse lookup)  
 `-6` - type of DNS query AAAA (IPv6 address)  
-`-t TYPE` - type of DNS query TYPE (default A) (TYPE is case insensitive) 
+`-t TYPE` - type of DNS query TYPE (default A) (TYPE is case insensitive)  
 `-s SERVER` - IP address or hostname of DNS server  
 `-p PORT` - port of DNS server (default 53)  
 `ADDRESS` - IP address or hostname to resolve  
