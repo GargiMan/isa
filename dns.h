@@ -64,6 +64,13 @@ inline uint32_t ntohle(const uint32_t value) {
     return is_little_endian ? ntohl(value) : value;
 }
 
+inline bool is_compressed(const uint8_t byte) {
+    return (byte & 0xc0) == 0xc0;
+}
+inline uint16_t get_compressed_offset(const uint8_t* buffer) {
+    return (static_cast<uint16_t>(buffer[0] & 0x3f) << 8) | buffer[1];
+}
+
 inline string getNameToDot(const uint8_t* buffer) {
     string name;
 
@@ -73,7 +80,7 @@ inline string getNameToDot(const uint8_t* buffer) {
         if (buffer[0] != 0) {
             name += ".";
             //pointer to another name
-            if (buffer[0] == 0xc0) {
+            if (is_compressed(buffer[0])) { 
                 name += static_cast<char>(buffer[0]);
                 name += static_cast<char>(buffer[1]);
                 break;
@@ -87,8 +94,8 @@ inline string getNameToDot(const uint8_t* buffer) {
 inline string getNameToDotRef(const uint8_t* buffer, const uint8_t* packet) {
     string name = getNameToDot(buffer);
 
-    if (name[name.length() - 2] == static_cast<char>(0xc0)) {
-        const uint8_t name_offset = name[name.length() - 1];
+    if (is_compressed(name[name.length() - 2])) {
+        const uint16_t name_offset = get_compressed_offset(reinterpret_cast<const uint8_t *>(name.c_str()) + name.length() - 2);
         name = name.substr(0, name.length() - 2);
         name += getNameToDot(packet + name_offset);
     }
@@ -99,7 +106,7 @@ inline string getNameToDotRef(const uint8_t* buffer, const uint8_t* packet) {
 inline size_t getNameToDotRefLength(const uint8_t* buffer) {
     string name = getNameToDot(buffer);
 
-    if (name[name.length() - 2] == static_cast<char>(0xc0)) {
+    if (is_compressed(name[name.length() - 2])) {
         return name.length();
     }
 
@@ -415,8 +422,8 @@ public:
         if (buffer[0] == 0x00) {
             this->name = "";
             offset += sizeof(uint8_t);
-        } else if (buffer[0] == 0xc0) {
-            this->name = getNameToDotRef(packet + buffer[1], this->packet);
+        } else if (is_compressed(buffer[0])) {
+            this->name = getNameToDotRef(packet + get_compressed_offset(buffer), this->packet);
             offset += sizeof(uint16_t);
         } else {
             this->name = getNameToDot(buffer);
@@ -439,12 +446,7 @@ public:
         this->rdlength = ntohse(rdlength);
         offset += sizeof(uint16_t);
 
-        if (buffer[offset + rdlength - 2] == 0xc0) {
-            this->rdata = string(reinterpret_cast<const char*>(buffer + offset), rdlength - 2);
-            this->rdata += string(reinterpret_cast<const char*>(packet + buffer[offset + rdlength - 1]));
-        } else {
-            this->rdata = string(reinterpret_cast<const char*>(buffer + offset), rdlength);
-        }
+        this->rdata = string(reinterpret_cast<const char*>(buffer + offset), rdlength);
         offset += rdlength;
 
         this->recordLength = offset;
