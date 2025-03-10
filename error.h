@@ -19,7 +19,8 @@ enum class ErrorCodes
     SocketError = 3,
     TransferError = 4,
     SignalError = 5,
-    TimeoutError = 6
+    TimeoutError = 6,
+    MemoryError = 7
 };
 
 void error_exit(ErrorCodes errcode, const std::string &msg);

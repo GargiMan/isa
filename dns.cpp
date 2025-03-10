@@ -180,3 +180,92 @@ void dns_print(const DNSPacket& packet) {
     }
     cout << endl;
 }
+
+string dns_get_default_server() {
+#if defined(_WIN32) || defined(_WIN64) // windows
+    ULONG flags = GAA_FLAG_INCLUDE_ALL_INTERFACES;
+    ULONG family = AF_UNSPEC;  // Get both IPv4 and IPv6 addresses
+    ULONG outBufLen = 0;
+    PIP_ADAPTER_ADDRESSES pAddresses = nullptr, pCurrAdapter = nullptr;
+
+    if (GetAdaptersAddresses(family, flags, nullptr, pAddresses, &outBufLen) == ERROR_BUFFER_OVERFLOW) {
+        pAddresses = (PIP_ADAPTER_ADDRESSES)malloc(outBufLen);
+    }
+
+    if (pAddresses == nullptr) {
+        error_exit(ErrorCodes::MemoryError, "Memory allocation failed during DNS server search (try again or specify DNS server manually)");
+    }
+
+    string dns_server = "";
+    if (GetAdaptersAddresses(family, flags, nullptr, pAddresses, &outBufLen) == NO_ERROR) {
+        for (pCurrAdapter = pAddresses; pCurrAdapter; pCurrAdapter = pCurrAdapter->Next) {
+            if (pCurrAdapter->OperStatus == IfOperStatusUp) {
+                PIP_ADAPTER_DNS_SERVER_ADDRESS pDns = pCurrAdapter->FirstDnsServerAddress;
+                while (pDns) {
+                    SOCKADDR* addr = pDns->Address.lpSockaddr;
+                    char dnsStr[INET6_ADDRSTRLEN] = "";
+
+                    if (addr->sa_family == AF_INET) {
+                        inet_ntop(AF_INET, &((struct sockaddr_in*)addr)->sin_addr, dnsStr, sizeof(dnsStr));
+                    } else if (addr->sa_family == AF_INET6) {
+                        inet_ntop(AF_INET6, &((struct sockaddr_in6*)addr)->sin6_addr, dnsStr, sizeof(dnsStr));
+                    }
+
+                    // Return first found DNS server
+                    if (strlen(dnsStr) > 0) {
+                        dns_server = dnsStr;
+                        break; 
+                    }
+                    pDns = pDns->Next;
+                }
+            }
+            // Stop searching if found
+            if (!dns_server.empty()) break; 
+        }
+    }
+
+    free(pAddresses);
+    return dns_server;
+
+#else // unix
+    // Check /etc/resolv.conf
+    ifstream file("/etc/resolv.conf");
+    if (file.is_open()) {
+        string line;
+        while (getline(file, line)) {
+            if (line.find("nameserver") == 0) {
+                istringstream iss(line);
+                string key, dns;
+                iss >> key >> dns;
+                return dns; // Return first found DNS server
+            }
+        }
+    }
+    
+
+    // Check systemd-resolved
+    FILE* fp = popen("resolvectl status | grep 'Current DNS Server' | awk '{print $4}'", "r");
+    if (false) {
+        char buffer[128];
+        if (fgets(buffer, sizeof(buffer), fp)) {
+            pclose(fp);
+            return string(buffer).substr(0, string(buffer).find('\n'));
+        }
+        pclose(fp);
+    }
+
+    // Check NetworkManager
+    fp = popen("nmcli dev show | grep 'IP4.DNS' | awk '{print $2}'", "r");
+    if (fp) {
+        char buffer[128];
+        if (fgets(buffer, sizeof(buffer), fp)) {
+            pclose(fp);
+            return string(buffer).substr(0, string(buffer).find('\n'));
+        }
+        pclose(fp);
+    }
+
+    return ""; // No DNS found
+
+#endif // _WIN32 || _WIN64
+}

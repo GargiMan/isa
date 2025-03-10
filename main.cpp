@@ -33,17 +33,18 @@ bool got_recursion = false;
  * @brief Prints help message
  */
 void print_help() {
-    cout << "Usage: dns [-r] [-x] [-6] [-t TYPE] -s SERVER [-p PORT] ADDRESS [ADDRESS...]" << endl;
+    cout << "Usage: dns [-r] [-6 | -x | -t TYPE] [-s SERVER] [-p PORT] ADDRESS [ADDRESS...]" << endl;
     cout << "       dns --help" << endl;
-    cout << "       Send DNS requests for all IPv4 ADDRESS values to SERVER and print responses" << endl;
+    cout << "       Send DNS requests for all ADDRESS (IPv4) values to DNS server and print responses" << endl;
     cout << "Options:" << endl;
     cout << "  -r          recursion desired, otherwise without recursion" << endl;
-    cout << "  -x          request type PTR (domain) instead of default type A (IPv4)" << endl;
     cout << "  -6          request type AAAA (IPv6) instead of default type A (IPv4)" << endl;
+    cout << "  -x          request type PTR (domain) instead of default type A (IPv4)" << endl;
     cout << "  -t TYPE     request type TYPE instead of default type A" << endl;
     cout << "              TYPE can be one of: A, NS, CNAME, SOA, PTR, MX, TXT, AAAA, ANY" << endl;
-    cout << "  -s SERVER   server host name or IP address, where to send request" << endl;
-    cout << "  -p PORT     server port number, default 53" << endl;
+    cout << "  -s SERVER   DNS server host name or IP address, where to send request" << endl;
+    cout << "              default server is obtained from system configuration" << endl;
+    cout << "  -p PORT     DNS server port number, default 53" << endl;
     cout << "  ADDRESS     IPv4/IPv6 address or domain depending on request type" << endl;
     cout << "  --help      print this help and exit program" << endl;
 }
@@ -128,15 +129,23 @@ void parse_args(const int argc, const char *argv[]) {
             got_type = true;
         } else {
             if (argv[i][0] == '-') {
-                error_exit(ErrorCodes::ArgumentError, "Unknown option '" + string(argv[i]) + "'");
+                error_exit(ErrorCodes::ArgumentError, "Unknown option '" + string(argv[i]) + "', use '--help' for available options");
             }
 
             addresses.emplace_back(argv[i]);
         }
     }
 
-    if (addresses.empty() || server.empty()) {
-        error_exit(ErrorCodes::ArgumentError, "Option '-s SERVER' and 'ADDRESS' are required arguments");
+    if (server.empty()) {
+        server = dns_get_default_server();
+        if (server.empty()) {
+            error_exit(ErrorCodes::ArgumentError, "Failed to obtain system configured DNS server, use option '-s SERVER' to specify server manually");
+        }
+        cout << "Default DNS server: " << server << endl;
+    }
+
+    if (addresses.empty()) {
+        error_exit(ErrorCodes::ArgumentError, "Argument 'ADDRESS' is required");
     }
 }
 

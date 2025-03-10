@@ -24,12 +24,13 @@
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <iphlpapi.h>
 
 #pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "iphlpapi.lib")
 
 #define close(a) (void)closesocket(a)
 #define socklen_t int
-
 
 #else // unix
 
@@ -39,6 +40,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <fstream>
 
 #endif // _WIN32 || _WIN64
 
@@ -685,5 +687,7 @@ void dns_init(const string& host, uint16_t port);
 DNSPacket dns_send(const DNSPacket& packet);
 void dns_print(const DNSPacket& packet);
 void dns_close();
+
+string dns_get_default_server();
 
 #endif // DNS_H

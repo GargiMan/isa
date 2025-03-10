@@ -88,16 +88,16 @@ File main.cpp contains main function that is used to run program. It parses argu
 
 Arguments are parsed using string comparison and each argument is parsed separately. Program supports following arguments:
 
-| Argument    | Description                                                   |
-| ----------- | ------------------------------------------------------------- |
-| `-r`        | recursive resolution                                          |
-| `-x`        | type of DNS query PTR (reverse lookup)                        |
-| `-6`        | type of DNS query AAAA (IPv6 address)                         |
-| `-t TYPE`   | type of DNS query TYPE (default A) (TYPE is case insensitive) |
-| `-s SERVER` | IP address or hostname of DNS server                          |
-| `-p PORT`   | port of DNS server (default 53)                               |
-| `ADDRESS`   | IP address or hostname to resolve                             |
-| `--help`    | print message with program info and usage                     |
+| Argument    | Description                                                         |
+| ----------- | ------------------------------------------------------------------- |
+| `-r`        | recursive resolution                                                |
+| `-6`        | type of DNS query AAAA (IPv6 address)                               |
+| `-x`        | type of DNS query PTR (reverse lookup)                              |
+| `-t TYPE`   | type of DNS query TYPE (default A) (TYPE is case insensitive)       |
+| `-s SERVER` | IP address or hostname of DNS server (default obtained from system) |
+| `-p PORT`   | port of DNS server (default 53)                                     |
+| `ADDRESS`   | IP address or hostname to resolve                                   |
+| `--help`    | print message with program info and usage                           |
 
 Program can be run with multiple addresses of same type to resolve.
 

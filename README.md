@@ -5,6 +5,7 @@ Date created: 28.09.2023
 
 ### Description:
 DNS resolver is a simple C++ program that can resolve domain names to IP addresses and vice versa. All DNS requests are sent to specified DNS server and program prints response in human readable format.
+DNS resolver is a simple C++ program that can resolve domain names to IP addresses and vice versa. All DNS requests are sent to system configured or specified DNS server and program prints response in human readable format.
 Program supports types of DNS queries A, NS, CNAME, SOA, PTR, MX, TXT, AAAA and ANY.
 
 ### Compilation:
@@ -13,15 +14,15 @@ Program can be compiled using Makefile by running `make` or `make all` command t
 ### Usage:
 Program can be run with following arguments:
 
-`dns [-r] [-x] [-6] [-t TYPE] -s SERVER [-p PORT] ADDRESS [ADDRESS...]`  
+`dns [-r] [-6 | -x | -t TYPE] [-s SERVER] [-p PORT] ADDRESS [ADDRESS...]`  
 `dns --help`  
 
 #### Options:
 `-r` - recursive resolution  
-`-x` - type of DNS query PTR (reverse lookup)  
 `-6` - type of DNS query AAAA (IPv6 address)  
+`-x` - type of DNS query PTR (reverse lookup)  
 `-t TYPE` - type of DNS query TYPE (default A) (TYPE is case insensitive)  
-`-s SERVER` - IP address or hostname of DNS server  
+`-s SERVER` - IP address or hostname of DNS server (default obtained from system)
 `-p PORT` - port of DNS server (default 53)  
 `ADDRESS` - IP address or hostname to resolve  
 `--help` - print message with program info and usage
